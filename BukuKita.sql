@@ -164,6 +164,7 @@ CREATE TABLE kartu_stok (
   CONSTRAINT fk_kartu_stok_barang FOREIGN KEY (idbarang) REFERENCES barang (idbarang)
 );
 
+
 INSERT INTO satuan (idsatuan, nama_satuan, status) 
 VALUES (101, 'Buku', 1),
        (102, 'Paket', 1),
@@ -180,29 +181,54 @@ VALUES (301, 'Admin'),
        (303, 'Gudang');
 
 INSERT INTO user (iduser, username, password, idrole) 
-VALUES (401, 'admin_bukukita', 'contoh_hash_admin', 1),
-       (402, 'kasir01', 'contoh_hash_kasir', 2),
-       (403, 'gudang01', 'contoh_hash_gudang', 3);
+VALUES (401, 'admin_bukukita', 'contoh_hash_admin', 301),
+       (402, 'kasir01', 'contoh_hash_kasir', 302),
+       (403, 'gudang01', 'contoh_hash_gudang', 303);
        
 INSERT INTO margin_penjualan (idmargin_penjualan, persen, status, iduser, updated_at)
-VALUES (501, 10, 1, 1, NULL),
-       (502, 20, 1, 1, NULL),
-	   (503, 30, 1, 1, NULL),
-       (504, 40, 1, 1, NULL),
-       (505, 50, 1, 1, NULL);
+VALUES (501, 10, 1, 401, NULL),
+       (502, 20, 1, 401, NULL),
+       (503, 30, 1, 401, NULL),
+       (504, 40, 1, 401, NULL),
+       (505, 50, 1, 401, NULL);
        
 INSERT INTO barang (idbarang, jenis, nama, idsatuan, status, harga) 
-VALUES (601, 'B', 'Laskar Pelangi', 1, 1, 85000),
-       (602, 'B', 'Bumi Manusia', 1, 1, 60000),
-       (603, 'B', 'Matematika Dasar', 1, 1, 45000),
-       (604, 'B', 'Laut Bercerita', 1, 1, 99000),
-	   (605, 'B', 'Algoritma dan Struktur Data', 1, 1, 90000);
+VALUES (601, 'B', 'Laskar Pelangi', 101, 1, 85000),
+       (602, 'B', 'Bumi Manusia', 101, 1, 60000),
+       (603, 'B', 'Matematika Dasar', 101, 1, 45000),
+       (604, 'B', 'Laut Bercerita', 101, 1, 99000),
+       (605, 'B', 'Algoritma dan Struktur Data', 101, 1, 90000);
 
+CREATE VIEW viewsatuanbarang 
+AS SELECT * FROM satuan;
 
-CREATE VIEW view_satuan_aktif AS
-SELECT idsatuan, nama_satuan
-FROM satuan
-WHERE status = 1;
+CREATE VIEW viewrole
+AS SELECT * FROM role;
+
+CREATE VIEW viewvendor
+AS SELECT * FROM vendor;
+
+CREATE VIEW viewbarang
+AS SELECT * FROM barang;
+
+CREATE VIEW viewuser
+AS SELECT * FROM user;
+
+CREATE VIEW viewmargin_penjualan
+AS SELECT * FROM margin_penjualan;
+
+CREATE OR REPLACE VIEW viewsatuanbarang 
+AS SELECT idsatuan AS ID, nama_satuan AS SATUAN,
+	 CASE 
+		WHEN status = 0 THEN 'Tidak Aktif'
+        ELSE 'Aktif'
+	 END AS STATUS
+FROM satuan;
+
+CREATE OR REPLACE VIEW viewrole
+AS SELECT idrole AS ID, nama_role AS ROLE
+FROM role;
+
 
 CREATE VIEW view_vendor_aktif AS
 SELECT idvendor, nama_vendor,
@@ -212,6 +238,40 @@ SELECT idvendor, nama_vendor,
        END AS jenis_vendor
 FROM vendor
 WHERE status = 'A';
+
+CREATE OR REPLACE VIEW viewbarang
+AS SELECT b.idbarang AS ID,
+	 CASE b.jenis
+		WHEN 'A' THEN 'Aksesoris'
+        WHEN 'B' THEN 'Boardgame'
+        WHEN 'C' THEN 'Card'
+        WHEN 'G' THEN 'Game'
+	 END AS Kategori, 
+     b.nama AS NAMA, 
+     b.harga AS HARGA, 
+     s.nama_satuan AS SATUAN,
+	 CASE b.status
+		WHEN 0 THEN 'Tidak Aktif'
+        ELSE 'Aktif'
+	 END AS STATUS
+FROM barang b, satuan s 
+WHERE b.idsatuan = s.idsatuan;
+
+CREATE OR REPLACE VIEW viewuser
+AS SELECT u.iduser AS ID, u.username AS USERNAME, r.nama_role AS ROLE
+FROM user u, role r
+WHERE u.idrole = r.idrole;
+
+CREATE OR REPLACE VIEW viewmargin_penjualan
+AS SELECT mp.idmargin_penjualan AS ID, mp.created_at AS 'TANGGAL DIBUAT', mp.persen AS PERSENTASE, 
+CASE mp.status
+		WHEN 0 THEN 'Tidak Aktif'
+        ELSE 'Aktif'
+	 END AS STATUS, 
+     mp.updated_at AS 'TERAKHIR DIUBAH',
+     u.username AS USER
+FROM margin_penjualan mp, user u
+WHERE mp.iduser = u.iduser;
 
 CREATE VIEW view_role AS
 SELECT idrole, nama_role
@@ -234,5 +294,269 @@ FROM barang b
 JOIN satuan s ON b.idsatuan = s.idsatuan
 WHERE b.status = 1;
 
-use BukuKita;
-SELECT * FROM view_barang;
+-- function
+DELIMITER $$
+
+CREATE FUNCTION hitung_harga_jual(id_barang INT)
+RETURNS DECIMAL(12,2)
+READS SQL DATA
+BEGIN
+    DECLARE v_harga DECIMAL(12,2);
+    -- ... isi function Anda ...
+    RETURN v_harga;
+END$$
+DELIMITER ;
+
+-- store procedured
+DELIMITER $$
+CREATE PROCEDURE sp_simpan_penjualan(IN k_idpenjualan INT,
+									 IN k_iduser INT,
+							 		 IN k_idmargin_penjualan INT,
+                                     IN k_iddetail_penjualan BIGINT,
+                                     IN k_harga_satuan INT,
+                                     IN k_jumlah INT,
+                                     IN k_idbarang INT)
+BEGIN
+	DECLARE v_subtotal INT;
+    DECLARE v_ppn INT;
+    DECLARE v_total INT;
+    
+    SET v_subtotal = hitung_subtotal(k_idbarang, k_jumlah);
+    SET v_total = hitung_total_ppn(k_idbarang, k_jumlah);
+	SET v_ppn = v_total - v_subtotal;
+    
+    INSERT INTO penjualan (idpenjualan, subtotal_nilai, ppn, total_nilai, iduser, idmargin_penjualan)
+    VALUES (k_idpenjualan, v_subtotal, v_ppn, v_total, k_iduser, k_idmargin_penjualan);
+    
+    INSERT INTO detail_penjualan (iddetail_penjualan, harga_satuan, jumlah, subtotal, penjualan_idpenjualan, idbarang)
+    VALUES (k_iddetail_penjualan, k_harga_Satuan, k_jumlah, v_subtotal, k_idpenjualan, k_idbarang);
+END $$
+DELIMITER ;
+
+DROP PROCEDURE IF EXISTS sp_simpan_penjualan;
+DELIMITER //
+CREATE PROCEDURE sp_simpan_penjualan(IN k_iduser INT,
+									 IN k_jumlah INT,
+									 IN k_idbarang INT)
+BEGIN
+	DECLARE v_subtotal INT;
+    DECLARE v_ppn INT;
+    DECLARE v_total INT;
+    DECLARE v_idpenjualan INT;
+    DECLARE v_harga_jual INT;
+    
+    SET v_harga_jual = hitung_harga_jual(k_idbarang);
+    SET v_subtotal = hitung_subtotal(k_idbarang, k_jumlah);
+    SET v_total = hitung_total_ppn(k_idbarang, k_jumlah);
+	SET v_ppn = v_total - v_subtotal;
+    
+    INSERT INTO penjualan (subtotal_nilai, ppn, total_nilai, iduser, idmargin_penjualan)
+    VALUES (v_subtotal, v_ppn, v_total, k_iduser, 
+			(SELECT idmargin_penjualan FROM margin_penjualan
+			 WHERE status = 1
+             LIMIT 1)
+		   );
+           
+	SET v_idpenjualan = LAST_INSERT_ID();
+    
+    INSERT INTO detail_penjualan (harga_satuan, jumlah, subtotal, penjualan_idpenjualan, idbarang)
+    VALUES (v_harga_jual, k_jumlah, v_subtotal, v_idpenjualan, k_idbarang);
+    END //
+    DELIMITER ;
+    
+--trigger
+DELIMITER //
+CREATE TRIGGER trigger_detail_penerimaan
+AFTER INSERT ON detail_penerimaan
+FOR EACH ROW 
+BEGIN
+	DECLARE v_stock INT;
+    
+    SELECT stock
+    INTO v_stock
+    FROM kartu_stok
+    WHERE idbarang = NEW.barang_idbarang
+    ORDER BY idkartu_stok DESC
+    LIMIT 1;
+    
+    IF v_stock IS NULL THEN
+    SET v_stock = 0;
+    END IF;
+
+    INSERT INTO kartu_stok (jenis_transaksi, masuk, keluar, stock, idtransaksi, idbarang)
+    VALUES ('P', NEW.jumlah_terima, 0, v_stock + NEW.jumlah_terima, NEW.idpenerimaan, NEW.barang_idbarang);
+END //
+DELIMITER ;
+
+DELIMITER //
+CREATE TRIGGER trigger_detail_penjualan
+AFTER INSERT ON detail_penjualan
+FOR EACH ROW
+BEGIN
+	DECLARE v_stock INT;
+    
+    SELECT stock
+    INTO v_stock
+    FROM kartu_stok
+    WHERE idbarang = NEW.idbarang
+    ORDER BY idkartu_stok DESC
+    LIMIT 1;
+    
+    IF v_stock IS NULL THEN
+    SET v_stock = 0;
+    END IF;
+    
+    INSERT INTO kartu_stok (jenis_transaksi, masuk, keluar, stock, idtransaksi, idbarang)
+    VALUES ('J', 0, NEW.jumlah, v_stock - NEW.jumlah, NEW.penjualan_idpenjualan, NEW.idbarang);
+END //
+DELIMITER ;
+
+DELIMITER //
+CREATE TRIGGER trigger_detail_retur
+AFTER INSERT ON detail_retur
+FOR EACH ROW
+BEGIN
+	DECLARE v_stock INT;
+    DECLARE v_idbarang INT;
+    SELECT barang_idbarang
+    INTO v_idbarang
+    FROM detail_penerimaan
+    WHERE iddetail_penerimaan = NEW.iddetail_penerimaan;
+    
+    SELECT stock
+    INTO v_stock
+    FROM kartu_stok
+    WHERE idbarang = v_idbarang
+    ORDER BY idkartu_stok DESC
+    LIMIT 1;
+    
+    IF v_stock IS NULL THEN
+    SET v_stock = 0;
+    END IF;
+    
+     INSERT INTO kartu_stok (jenis_transaksi, masuk, keluar, stock, idtransaksi, idbarang)
+    VALUES ('R', 0, NEW.jumlah, v_stock - NEW.jumlah, NEW.idretur, v_idbarang);
+END //
+DELIMITER ;
+
+-- view data transaksi
+CREATE VIEW viewpengadaan AS
+SELECT p.idpengadaan AS ID, 
+		  CASE p.status
+          WHEN 'P' THEN 'Diproses'
+          WHEN 'S' THEN 'Selesai'
+          END AS STATUS,
+          p.subtotal_nilai AS SUBTOTAL,
+          p.ppn AS PPN,
+          p.total_nilai AS TOTAL,
+          v.nama_vendor AS VENDOR,
+          u.username AS OLEH
+FROM pengadaan  p
+JOIN vendor v
+ON p.vendor_idvendor = v.idvendor
+JOIN user u
+ON p.user_iduser = u.iduser;
+
+CREATE VIEW viewdetail_pengadaan AS
+SELECT dp.iddetail_pengadaan AS 'ID DETAIL', 
+	   p.idpengadaan AS 'ID PENGADAAN',
+	   b.nama AS BARANG,
+	   dp.jumlah AS 'JUMLAH BARANG',
+	   dp.harga_satuan AS 'HARGA SATUAN BARANG',
+       dp.sub_total AS SUBTOTAL
+FROM detail_pengadaan dp
+JOIN barang b
+ON dp.idbarang = b.idbarang
+JOIN pengadaan p
+ON dp.idpengadaan = p.idpengadaan;
+
+
+CREATE VIEW viewpenerimaan AS
+SELECT pr.idpenerimaan AS ID,
+	   p.idpengadaan AS 'ID PENGADAAN',
+       u.username AS OLEH,
+	   CASE pr.status 
+       WHEN 'S' THEN 'Selesai'
+       END AS STATUS
+FROM penerimaan pr
+JOIN pengadaan p
+ON pr.idpengadaan = p.idpengadaan
+JOIN user u
+ON pr.iduser = u.iduser;
+
+
+CREATE VIEW viewdetail_penerimaan AS
+SELECT dpr.iddetail_penerimaan AS ID,
+	   pr.idpenerimaan AS 'ID PENERIMAAN',
+       b.nama AS BARANG,
+	   dpr.jumlah_terima AS 'JUMLAH DITERIMA',
+       dpr.harga_satuan_terima AS 'HARGA SATUAN',
+       dpr.sub_total_terima AS 'SUBTOTAL PENERIMAAN'
+FROM detail_penerimaan dpr
+JOIN penerimaan pr
+ON dpr.idpenerimaan = pr.idpenerimaan
+JOIN barang b
+ON dpr.barang_idbarang = b.idbarang;
+
+CREATE VIEW viewpenjualan AS
+SELECT j.idpenjualan AS ID,
+	   j.subtotal_nilai AS SUBTOTAL,
+       j.ppn AS PPN,
+       j.total_nilai AS TOTAL,
+       u.username AS OLEH
+FROM penjualan j
+JOIN user u
+ON j.iduser = u.iduser;
+
+CREATE VIEW viewdetail_penjualan AS
+SELECT dj.iddetail_penjualan AS ID,
+	   j.idpenjualan AS 'ID PENJUALAN',
+       b.nama AS BARANG,
+	   dj.harga_satuan AS 'HARGA SATUAN',
+       dj.jumlah AS JUMLAH,
+       dj.subtotal AS SUBTOTAL
+FROM detail_penjualan dj
+JOIN penjualan j
+ON dj.penjualan_idpenjualan = j.idpenjualan
+JOIN barang b
+ON dj.idbarang = b.idbarang;
+
+CREATE VIEW viewretur AS
+SELECT r.idretur AS ID,
+	   pr.idpenerimaan AS 'ID PENERIMAAN',
+       u.username AS 'DIPROSES OLEH'
+FROM retur r
+JOIN penerimaan pr
+ON r.idpenerimaan = pr.idpenerimaan
+JOIN user u
+ON r.iduser = u.iduser;
+
+CREATE VIEW viewdetail_retur AS
+SELECT dr.iddetail_retur AS ID,
+	   r.idretur AS 'ID RETUR',
+	   b.nama AS BARANG,
+       dr.jumlah AS JUMLAH,
+       dr.alasan AS 'ALASAN RETUR'
+FROM detail_retur dr
+JOIN retur r 
+ON dr.idretur = r.idretur
+JOIN detail_penerimaan dpr
+ON dr.iddetail_penerimaan = dpr.iddetail_penerimaan
+JOIN barang b
+ON dpr.barang_idbarang = b.idbarang;
+
+CREATE VIEW viewkartu_stok AS
+SELECT ks.idkartu_stok AS ID,
+	   ks.idtransaksi AS 'ID TRANSAKSI',
+       b.nama AS BARANG,
+	   CASE ks.jenis_transaksi 
+       WHEN 'P' THEN 'PENERIMAAN'
+       WHEN 'J' THEN 'PENJUALAN'
+       WHEN 'R' THEN 'RETUR'
+       END AS 'JENIS TRANSAKSI',
+       ks.masuk AS 'BARANG MASUK',
+       ks.keluar AS 'BARANG KELUAR',
+       ks.stock AS 'STOCK BARANG'
+FROM kartu_stok ks
+JOIN barang b
+ON ks.idbarang = b.idbarang;
