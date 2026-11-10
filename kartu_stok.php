@@ -1,23 +1,20 @@
 <?php
-require_once 'config.php'; need_login();
-$f = (int)($_GET['barang'] ?? 0);
-$barang = $pdo->query("SELECT idbarang, nama FROM barang")->fetchAll(PDO::FETCH_KEY_PAIR);
-if ($f) {
-    $s = $pdo->prepare("SELECT ks.idkartu_stok AS ID, ks.created_at AS Waktu, ks.idtransaksi AS 'ID Transaksi', b.nama AS Barang,
-        CASE ks.jenis_transaksi WHEN 'P' THEN 'Penerimaan' WHEN 'J' THEN 'Penjualan' WHEN 'R' THEN 'Retur' END AS Jenis,
-        ks.masuk AS Masuk, ks.keluar AS Keluar, ks.stock AS Stok
-        FROM kartu_stok ks JOIN barang b ON b.idbarang=ks.idbarang WHERE ks.idbarang=? ORDER BY ks.idkartu_stok DESC LIMIT 200");
-    $s->execute([$f]); $rows = $s->fetchAll();
-} else {
-    $rows = $pdo->query("SELECT * FROM viewkartu_stok ORDER BY ID DESC LIMIT 200")->fetchAll();
+require_once 'config/layout.php';
+page_header('Kartu Stok', 'kartu_stok.php');
+$pilih = (int)($_GET['idbarang'] ?? 0);
+$jenis = ['T' => 'Penerimaan', 'J' => 'Penjualan', 'R' => 'Retur'];
+
+echo '<div class="card"><form method="get" class="form"><label>Filter Barang' .
+     select_html('idbarang', q($conn, "SELECT idbarang, nama FROM barang ORDER BY nama"), 'idbarang', 'nama', $pilih, 'onchange="this.form.submit()"') .
+     '</label></form></div>';
+
+$sql = "SELECT k.*, b.nama FROM kartu_stok k JOIN barang b ON k.idbarang=b.idbarang" . ($pilih ? " WHERE k.idbarang=?" : "") . " ORDER BY k.idkartu_stok DESC LIMIT 300";
+$rows = q($conn, $sql, $pilih ? [$pilih] : []);
+echo '<div class="card"><table class="tbl"><thead><tr><th>ID</th><th>Tanggal</th><th>Barang</th><th>Transaksi</th><th>Ref</th><th>Masuk</th><th>Keluar</th><th>Stok</th></tr></thead><tbody>';
+foreach ($rows as $r) {
+    echo '<tr><td>' . $r['idkartu_stok'] . '</td><td>' . e($r['created_at']) . '</td><td>' . e($r['nama']) . '</td><td>' . ($jenis[$r['jenis_transaksi']] ?? $r['jenis_transaksi']) . '</td>
+    <td>#' . $r['idtransaksi'] . '</td><td>' . (int)$r['masuk'] . '</td><td>' . (int)$r['keluar'] . '</td><td><b>' . $r['stock'] . '</b></td></tr>';
 }
-include 'header.php';
-?>
-<h4 class="mb-3">Kartu Stok</h4>
-<form class="row g-2 mb-3"><div class="col-auto">
-  <select name="barang" class="form-select" onchange="this.form.submit()">
-    <option value="0">Semua barang</option>
-    <?php foreach ($barang as $id => $n): ?><option value="<?= $id ?>" <?= $f === $id ? 'selected' : '' ?>><?= e($n) ?></option><?php endforeach; ?>
-  </select></div></form>
-<?php tabel($rows); ?>
-<?php include 'footer.php'; ?>
+if (!$rows) echo '<tr><td colspan="8" class="empty">Belum ada mutasi stok.</td></tr>';
+echo '</tbody></table></div>';
+page_footer();

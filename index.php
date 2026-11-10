@@ -1,19 +1,18 @@
 <?php
-require_once 'config.php'; need_login();
-$n = fn($t) => $pdo->query("SELECT COUNT(*) FROM $t")->fetchColumn();
-$stok = $pdo->query("SELECT b.idbarang AS ID, b.nama AS Barang,
-    IFNULL((SELECT stock FROM kartu_stok k WHERE k.idbarang = b.idbarang ORDER BY k.idkartu_stok DESC LIMIT 1), 0) AS Stok,
-    hitung_harga_jual(b.idbarang) AS 'Harga Jual'
-    FROM barang b WHERE b.status = 1")->fetchAll();
-include 'header.php';
-?>
-<h4 class="mb-3">Dashboard</h4>
-<div class="row g-3 mb-4">
-  <?php foreach (['Barang' => 'barang', 'Pengadaan' => 'pengadaan', 'Penerimaan' => 'penerimaan', 'Penjualan' => 'penjualan'] as $l => $t): ?>
-    <div class="col-6 col-md-3"><div class="card text-center"><div class="card-body">
-      <div class="fs-2 fw-bold"><?= $n($t) ?></div><div class="text-muted"><?= $l ?></div>
-    </div></div></div>
-  <?php endforeach; ?>
-</div>
-<div class="card"><div class="card-header">Stok Barang</div><div class="card-body"><?php tabel($stok); ?></div></div>
-<?php include 'footer.php'; ?>
+require_once 'config/layout.php';
+page_header('Dashboard', 'index.php');
+$c = fn($t) => q($conn, "SELECT COUNT(*) n FROM $t")[0]['n'];
+$omzet = q($conn, "SELECT COALESCE(SUM(total_nilai),0) n FROM penjualan")[0]['n'];
+echo '<div class="stats">
+<div class="stat"><span>Barang</span><b>' . $c('barang') . '</b></div>
+<div class="stat"><span>Vendor</span><b>' . $c('vendor') . '</b></div>
+<div class="stat"><span>Pengadaan</span><b>' . $c('pengadaan') . '</b></div>
+<div class="stat"><span>Penjualan</span><b>' . $c('penjualan') . '</b></div>
+<div class="stat"><span>Total Omzet</span><b>' . rp($omzet) . '</b></div></div>';
+
+echo '<div class="card"><h3>Stok Barang Saat Ini</h3><table class="tbl"><thead><tr><th>Barang</th><th>Harga Beli</th><th>Stok</th></tr></thead><tbody>';
+foreach (barang_aktif($conn) as $b) {
+    echo '<tr><td>' . e($b['nama']) . '</td><td>' . rp($b['harga']) . '</td><td><span class="badge ' . ($b['stok'] > 5 ? 'ok' : 'warn') . '">' . $b['stok'] . '</span></td></tr>';
+}
+echo '</tbody></table></div>';
+page_footer();
